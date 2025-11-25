@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Pokemon Style RPG (No Images)</title>
+  <title>Pokemon Style RPG</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
   <style>
     body { margin: 0; background: #0b3d0b; }
@@ -12,39 +12,65 @@
 <body>
 
 <script>
+// =======================
+//      GLOBAL DATA
+// =======================
+let playerInventory = [];
+
+const MONSTERS = [
+  { id: 48, name: "Slime" },
+  { id: 49, name: "Big Slime" },
+  { id: 50, name: "Horn Beast" },
+  { id: 51, name: "Baby Dragon" }
+];
+
+const RARE_MONSTERS = [
+  { id: 52, name: "Golden Dragon" }
+];
+
+// =======================
+//       MAIN SCENE
+// =======================
 class MainScene extends Phaser.Scene {
   constructor() { super("main"); }
 
   preload() {}
 
   create() {
-    // --- Player (just a green square) ---
+    // Player
     this.player = this.add.rectangle(100, 100, 16, 16, 0x88ff88);
     this.physics.add.existing(this.player);
     this.player.body.setCollideWorldBounds(true);
 
-    // --- Cursor keys ---
+    // Movement
     this.cursors = this.input.keyboard.createCursorKeys();
 
-    // --- Camera ---
+    // Camera
     this.cameras.main.startFollow(this.player);
 
-    // --- Fake MAP tile objects ---
+    // Walls
     this.walls = this.physics.add.staticGroup();
-
-    // 10 random rocks (dark green squares)
     for (let i = 0; i < 10; i++) {
-      let rock = this.add.rectangle(100 + i * 40, 200, 16, 16, 0x003300);
+      let rock = this.add.rectangle(200 + i * 40, 200, 16, 16, 0x003300);
       this.walls.add(rock);
     }
-
     this.physics.add.collider(this.player, this.walls);
+
+    // Grass area (random encounter zone)
+    this.grass = this.add.rectangle(400, 300, 300, 200, 0x116611);
+    this.physics.add.existing(this.grass, true);
+
+    // Inventory key
+    this.keyI = this.input.keyboard.addKey("I");
+
+    this.inventoryText = this.add.text(20,20,"Inventory: I",{
+      fontSize:"18px", color:"#fff"
+    }).setScrollFactor(0);
   }
 
   update() {
-    const speed = 100;
+    const speed = 120;
     const body = this.player.body;
-
     body.setVelocity(0);
 
     if (this.cursors.left.isDown) body.setVelocityX(-speed);
@@ -54,16 +80,148 @@ class MainScene extends Phaser.Scene {
     else if (this.cursors.down.isDown) body.setVelocityY(speed);
 
     body.velocity.normalize().scale(speed);
+
+    // -------- 랜덤 조우 --------
+    if (this.physics.world.overlap(this.player, this.grass)) {
+      if (Phaser.Math.Between(0, 250) === 1) {  // 약 0.4% 체감
+          
+        let isRare = Phaser.Math.Between(1, 100) <= 1; // 1% 희귀
+
+        let base = isRare 
+            ? Phaser.Utils.Array.GetRandom(RARE_MONSTERS)
+            : Phaser.Utils.Array.GetRandom(MONSTERS);
+
+        let monster = {
+          name: base.name,
+          id: base.id,
+          rare: isRare,
+          maxHP: Phaser.Math.Between(15,35) + (isRare?20:0),
+          attack: Phaser.Math.Between(2,7) + (isRare?4:0)
+        };
+
+        this.scene.start("battle", { monster });
+      }
+    }
+
+    // ----- 인벤토리 표시 -----
+    if (Phaser.Input.Keyboard.JustDown(this.keyI)) {
+      let list = "=== INVENTORY ===\n\n";
+
+      if (playerInventory.length === 0) {
+        list += "비어 있음";
+      } else {
+        playerInventory.forEach((m, i) => {
+          list += `${i+1}. ${m.name} ${m.rare?"(★rare★)":""}\n`;
+          list += `   HP: ${m.maxHP}, ATK: ${m.attack}\n\n`;
+        });
+      }
+      alert(list);
+    }
   }
 }
 
+// =======================
+//     BATTLE SCENE
+// =======================
+class BattleScene extends Phaser.Scene {
+  constructor(){ super("battle"); }
+
+  init(data){
+    this.monster = data.monster;
+  }
+
+  create(){
+    this.add.rectangle(400,300,800,600,0x222222);
+
+    this.add.text(260, 40, 
+      `Wild ${this.monster.name} ${this.monster.rare?"★":""}`,
+      { fontSize:"32px", color:"#ffffff" }
+    );
+
+    // Monster (simple box)
+    this.enemyBox = this.add.rectangle(400,200,50,50,
+      this.monster.rare?0xffd700:0xff4444);
+
+    this.enemyHP = this.monster.maxHP;
+
+    this.hpText = this.add.text(320,300,
+      `HP: ${this.enemyHP}/${this.monster.maxHP}`,
+      { fontSize:"28px", color:"#ffffff" }
+    );
+
+    this.keyA = this.input.keyboard.addKey("A");
+    this.keyC = this.input.keyboard.addKey("C");
+
+    this.add.text(260,400,"A: Attack", {fontSize:"28px", color:"#fff"});
+    this.add.text(260,450,"C: Capture", {fontSize:"28px", color:"#fff"});
+  }
+
+  update(){
+    // ===== 공격 =====
+    if (Phaser.Input.Keyboard.JustDown(this.keyA)) {
+      this.enemyHP -= 5;
+      if (this.enemyHP < 0) this.enemyHP = 0;
+
+      this.hpText.setText(`HP: ${this.enemyHP}/${this.monster.maxHP}`);
+
+      if (this.enemyHP <= 0) {
+        this.add.text(260,500,"몬스터가 쓰러졌다!",{
+          fontSize:"30px", color:"#ffff88"
+        });
+        this.time.delayedCall(1000, ()=> this.scene.start("main"));
+      }
+    }
+
+    // ===== 포획 =====
+    if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
+
+      let maxHP = this.monster.maxHP;
+      let currentHP = this.enemyHP;
+
+      let baseRate = 10;
+      let extraRate = ((maxHP - currentHP) / maxHP) * 40;
+      let rarePenalty = this.monster.rare ? -15 : 0;
+
+      let finalRate = Math.floor(baseRate + extraRate + rarePenalty);
+      if (finalRate < 1) finalRate = 1;
+
+      let chance = Phaser.Math.Between(1,100);
+
+      if (chance <= finalRate) {
+
+        // 인벤토리 저장
+        playerInventory.push({
+          name: this.monster.name,
+          maxHP: this.monster.maxHP,
+          attack: this.monster.attack,
+          rare: this.monster.rare
+        });
+
+        this.add.text(230,530,"★ CAPTURED! ★",{
+          fontSize:"40px", color:"#ffff88"
+        });
+
+        this.time.delayedCall(1200, ()=> this.scene.start("main"));
+
+      } else {
+        this.add.text(310,530,"MISS!",{
+          fontSize:"40px", color:"#ff4444"
+        });
+      }
+    }
+  }
+}
+
+// =======================
+//       GAME CONFIG
+// =======================
 const config = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
   backgroundColor: "#0b3d0b",
   physics: { default: "arcade", arcade: { debug: false } },
-  scene: [MainScene]
+  scene: [MainScene, BattleScene]
 };
 
 new Phaser.Game(config);
