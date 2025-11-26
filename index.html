@@ -1,170 +1,139 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <title>GB RPG - Single File</title>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
-  <style>
-    body { margin: 0; background: #000; }
-    canvas { display: block; margin: auto; }
-    #uiBox {
-      position: fixed;
-      left: 50%; transform: translateX(-50%);
-      bottom: 10px;
-      width: 600px;
-      padding: 15px;
-      background: #222;
-      color: white;
-      font-family: monospace;
-      border: 3px solid white;
-      display: none;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>포켓몬 스타일 게임</title>
+    <style>
+        body { font-family: 'Arial'; padding: 20px; background: #f3f8ff; }
+        h1 { color: #2c3e50; }
+        .box { padding: 15px; border-radius: 10px; background: white; 
+               box-shadow: 0 0 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        button { padding: 10px 20px; margin: 5px; border-radius: 8px; border: none; 
+                 background: #4b7bec; color: white; cursor: pointer; }
+        button:hover { background: #3867d6; }
+        .log { white-space: pre-line; background: #eef3ff; padding: 10px; border-radius: 10px; }
+    </style>
 </head>
 <body>
+    <h1>포켓몬 스타일 게임</h1>
 
-<div id="uiBox"></div>
+    <div class="box">
+        <h3>야생 포켓몬 정보</h3>
+        <p id="wildInfo"></p>
+    </div>
 
-<script>
-class MainScene extends Phaser.Scene {
-  constructor() { super("main"); }
+    <div class="box">
+        <h3>내 포켓몬</h3>
+        <p id="myInfo"></p>
+    </div>
 
-  preload() {}
+    <div class="box">
+        <h3>행동</h3>
+        <button id="attackBtn">공격하기</button>
+        <button id="catchBtn">포획하기</button>
+        <button id="runBtn">도망가기</button>
+    </div>
 
-  create() {
-    // 플레이어
-    this.player = this.add.rectangle(400, 300, 18, 18, 0x00ff00);
-    this.physics.add.existing(this.player);
+    <div class="log" id="log"></div>
 
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.canMove = true;
+    <script>
+        // 내 포켓몬 (기본 스타터)
+        let myPokemon = {
+            name: "파이리",
+            maxHp: 45,
+            hp: 45,
+            attack: 12
+        };
 
-    // 풀숲 영역 (랜덤 조우)
-    this.grass = this.physics.add.staticGroup();
-    for (let i = 0; i < 10; i++) {
-      let g = this.add.rectangle(200 + i*50, 400, 32, 16, 0x116611);
-      this.grass.add(g);
-    }
+        // 야생 포켓몬 목록
+        const wildList = [
+            { name: "피카츄", maxHp: 35, attack: 10, rare: false },
+            { name: "모다피", maxHp: 40, attack: 8, rare: false },
+            { name: "야돈", maxHp: 55, attack: 7, rare: false },
+            { name: "리자몽", maxHp: 80, attack: 18, rare: true },  // 희귀
+            { name: "뮤", maxHp: 100, attack: 20, rare: true }      // 매우 희귀
+        ];
 
-    this.physics.add.overlap(this.player, this.grass, () => {
-      if (Math.random() < 0.02) {  // 2% 확률로 전투 진입
-        this.scene.start("battle");
-      }
-    });
-  }
+        let wild = null;
 
-  update() {
-    if (!this.canMove) return;
-    const sp = 150;
-    const body = this.player.body;
-    body.setVelocity(0);
+        function spawnWild() {
+            wild = JSON.parse(JSON.stringify(
+                wildList[Math.floor(Math.random() * wildList.length)]
+            ));
+            wild.hp = wild.maxHp;
 
-    if (this.cursors.left.isDown) body.setVelocityX(-sp);
-    else if (this.cursors.right.isDown) body.setVelocityX(sp);
+            log(`야생 ${wild.name} 이(가) 나타났다!`);
+            updateInfo();
+        }
 
-    if (this.cursors.up.isDown) body.setVelocityY(-sp);
-    else if (this.cursors.down.isDown) body.setVelocityY(sp);
+        function updateInfo() {
+            document.getElementById("wildInfo").innerText =
+                `${wild.name} (HP: ${wild.hp}/${wild.maxHp}) ${wild.rare ? "🌟 희귀" : ""}`;
 
-    body.velocity.normalize().scale(sp);
-  }
-}
+            document.getElementById("myInfo").innerText =
+                `${myPokemon.name} (HP: ${myPokemon.hp}/${myPokemon.maxHp})`;
+        }
 
-// 인벤토리 저장소
-let INVENTORY = [];
+        function log(t) {
+            document.getElementById("log").innerText += t + "\n";
+        }
 
+        // 공격 버튼
+        document.getElementById("attackBtn").onclick = () => {
+            const dmg = Math.floor(Math.random() * myPokemon.attack) + 5;
+            wild.hp = Math.max(0, wild.hp - dmg);
+            log(`내 포켓몬이 ${wild.name}에게 ${dmg} 데미지를 주었다!`);
 
-// 배틀 씬
-class BattleScene extends Phaser.Scene {
-  constructor() { super("battle"); }
+            if (wild.hp === 0) {
+                log(`${wild.name}을(를) 쓰러뜨렸다!\n새로운 야생 포켓몬 등장!`);
+                spawnWild();
+                return;
+            }
 
-  create() {
-    document.getElementById("uiBox").style.display = "block";
-    this.text = document.getElementById("uiBox");
+            wildAttack();
+            updateInfo();
+        };
 
-    // 랜덤 몬스터 생성
-    let rareChance = Math.random();
-    this.monster = {
-      name: rareChance < 0.01 ? "희귀몬" : "야생몬",
-      maxHP: Math.floor(Math.random() * 40 + 30),
-      atk: Math.floor(Math.random() * 10 + 5)
-    };
-    this.monster.hp = this.monster.maxHP;
+        // 야생 포켓몬 반격
+        function wildAttack() {
+            const dmg = Math.floor(Math.random() * wild.attack) + 3;
+            myPokemon.hp = Math.max(0, myPokemon.hp - dmg);
+            log(`야생 ${wild.name}의 공격! ${dmg} 데미지!`);
 
-    this.text.innerHTML = `${this.monster.name} 이(가) 나타났다!<br>
-    HP: ${this.monster.hp}<br><br>
-    [Z] 공격 | [X] 잡기 | [C] 도망`;
+            if (myPokemon.hp === 0) {
+                log("내 포켓몬이 쓰러졌다… 회복 후 새로운 포켓몬 등장!");
+                myPokemon.hp = myPokemon.maxHp;
+                spawnWild();
+            }
+        }
 
-    this.input.keyboard.on("keydown-Z", () => this.attackMonster());
-    this.input.keyboard.on("keydown-X", () => this.catchMonster());
-    this.input.keyboard.on("keydown-C", () => this.escape());
-  }
+        // 포획 버튼
+        document.getElementById("catchBtn").onclick = () => {
+            const hpRatio = wild.hp / wild.maxHp;
+            let catchRate = Math.floor((1 - hpRatio) * 70);  // 최대 70%
+            if (wild.rare) catchRate -= 20; // 희귀는 더 잡기 어려움
+            if (catchRate < 5) catchRate = 5;
 
-  updateUI() {
-    this.text.innerHTML = `${this.monster.name}<br>
-    HP: ${this.monster.hp}/${this.monster.maxHP}<br><br>
-    [Z] 공격 | [X] 잡기 | [C] 도망`;
-  }
+            const roll = Math.random() * 100;
+            log(`포획 시도! 확률: ${catchRate}%`);
 
-  attackMonster() {
-    this.monster.hp -= 10;
-    if (this.monster.hp <= 0) {
-      this.text.innerHTML = `몬스터를 쓰러뜨렸다!<br>[SPACE]`;
-      this.input.keyboard.once("keydown-SPACE", () => this.exitBattle());
-      return;
-    }
-    this.updateUI();
-  }
+            if (roll <= catchRate) {
+                log(`🎉 성공! ${wild.name}을(를) 잡았다!\n새로운 야생 포켓몬 등장!`);
+                spawnWild();
+            } else {
+                log("포획 실패! 야생 포켓몬이 도망쳤다!");
+                spawnWild();
+            }
+        };
 
-  catchMonster() {
-    // HP가 낮을수록 포획률 증가
-    let hpRatio = 1 - (this.monster.hp / this.monster.maxHP);
-    let baseCatch = 0.1;  // 기본 10%
-    let finalRate = baseCatch + hpRatio * 0.4; // 최대 50%
+        // 도망가기
+        document.getElementById("runBtn").onclick = () => {
+            log("도망쳤다! 새로운 포켓몬을 찾는 중…");
+            spawnWild();
+        };
 
-    // 실패 시 도주 (요청 반영!)
-    if (Math.random() > finalRate) {
-      this.text.innerHTML = `잡기에 실패했다...!<br>${this.monster.name} 이(가) 도망갔다!<br>[SPACE]`;
-      this.input.keyboard.once("keydown-SPACE", () => this.exitBattle());
-      return;
-    }
-
-    // 성공
-    INVENTORY.push({
-      name: this.monster.name,
-      hp: this.monster.maxHP,
-      atk: this.monster.atk
-    });
-
-    this.text.innerHTML = `잡았다!<br>
-    인벤토리에 추가됨.<br>
-    총 보유: ${INVENTORY.length}마리<br><br>[SPACE]`;
-    this.input.keyboard.once("keydown-SPACE", () => this.exitBattle());
-  }
-
-  escape() {
-    this.text.innerHTML = `도망쳤다!<br>[SPACE]`;
-    this.input.keyboard.once("keydown-SPACE", () => this.exitBattle());
-  }
-
-  exitBattle() {
-    document.getElementById("uiBox").style.display = "none";
-    this.scene.start("main");
-  }
-}
-
-
-// Phaser 설정
-const config = {
-  type: Phaser.AUTO,
-  width: 800,
-  height: 600,
-  backgroundColor: "#0d3d0d",
-  physics: { default: "arcade", arcade: { debug: false }},
-  scene: [MainScene, BattleScene]
-};
-
-new Phaser.Game(config);
-</script>
-
+        // 처음 시작
+        spawnWild();
+    </script>
 </body>
 </html>
